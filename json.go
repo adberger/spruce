@@ -9,8 +9,8 @@ import (
 
 	"github.com/starkandwayne/goutils/ansi"
 
+	. "github.com/adberger/spruce/log"
 	"github.com/geofffranks/simpleyaml"
-	. "github.com/geofffranks/spruce/log"
 )
 
 func jsonifyData(data []byte, strict bool) (string, error) {

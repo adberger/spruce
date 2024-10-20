@@ -10,7 +10,7 @@ import (
 	"github.com/starkandwayne/goutils/ansi"
 	regexp "github.com/wasilibs/go-re2"
 
-	. "github.com/geofffranks/spruce/log"
+	. "github.com/adberger/spruce/log"
 )
 
 type listOp int

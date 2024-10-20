@@ -9,7 +9,7 @@ import (
 
 	"github.com/starkandwayne/goutils/ansi"
 
-	. "github.com/geofffranks/spruce/log"
+	. "github.com/adberger/spruce/log"
 	"github.com/starkandwayne/goutils/tree"
 )
 
