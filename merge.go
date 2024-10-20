@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"os"
 	"reflect"
-	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/starkandwayne/goutils/ansi"
+	regexp "github.com/wasilibs/go-re2"
 
 	. "github.com/geofffranks/spruce/log"
 )
@@ -35,7 +35,9 @@ type Merger struct {
 // ModificationDefinition encapsulates the details of an array modification:
 // (1) the type of modification, e.g. insert, delete, replace
 // (2) an optional guide to the specific part of the array to be modified,
-//    for example the index at which an insertion should be done
+//
+//	for example the index at which an insertion should be done
+//
 // (3) an optional list of entries to be added or merged into the array
 type ModificationDefinition struct {
 	listOp listOp
