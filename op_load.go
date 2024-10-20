@@ -8,8 +8,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/adberger/spruce/log"
 	"github.com/geofffranks/simpleyaml"
-	"github.com/geofffranks/spruce/log"
 	"github.com/starkandwayne/goutils/ansi"
 	"github.com/starkandwayne/goutils/tree"
 )
