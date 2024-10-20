@@ -35,7 +35,9 @@ type Merger struct {
 // ModificationDefinition encapsulates the details of an array modification:
 // (1) the type of modification, e.g. insert, delete, replace
 // (2) an optional guide to the specific part of the array to be modified,
-//    for example the index at which an insertion should be done
+//
+//	for example the index at which an insertion should be done
+//
 // (3) an optional list of entries to be added or merged into the array
 type ModificationDefinition struct {
 	listOp listOp
@@ -76,6 +78,19 @@ func getDefaultIdentifierKey() string {
 	return "name"
 }
 
+func isOperatorString(str string, operation string) bool {
+	// Check if the string starts with "(( " and ends with " ))"
+	if strings.HasPrefix(str, "((") && strings.HasSuffix(str, "))") {
+		// Extract the middle part, between the parentheses
+		middle := str[2 : len(str)-2] // Get the content between "((" and "))"
+		// Trim any spaces around "merge"
+		trimmed := strings.TrimSpace(middle)
+		// Check if the trimmed content is "merge"
+		return trimmed == operation
+	}
+	return false
+}
+
 func deepCopy(orig interface{}) interface{} {
 	switch orig.(type) {
 	case map[interface{}]interface{}:
@@ -104,10 +119,9 @@ func (m *Merger) Merge(a map[interface{}]interface{}, b map[interface{}]interfac
 }
 
 func (m *Merger) mergeMap(orig map[interface{}]interface{}, n map[interface{}]interface{}, node string) {
-	mergeRx := regexp.MustCompile(`^\s*\Q((\E\s*merge\s*.*\Q))\E`)
 	for k, val := range n {
 		path := fmt.Sprintf("%s.%v", node, k)
-		if s, ok := val.(string); ok && mergeRx.MatchString(s) {
+		if s, ok := val.(string); ok && isOperatorString(s, "merge") {
 			m.Errors.Append(ansi.Errorf("@m{%s}: @R{inappropriate use of} @c{(( merge ))} @R{operator outside of a list} (this is @G{spruce}, after all)", path))
 		}
 
@@ -122,11 +136,6 @@ func (m *Merger) mergeMap(orig map[interface{}]interface{}, n map[interface{}]in
 }
 
 func (m *Merger) mergeObj(orig interface{}, n interface{}, node string) interface{} {
-	// regular expression to search for prune and sort operator to make their
-	// special behavior possible
-	pruneRx := regexp.MustCompile(`^\s*\Q((\E\s*prune\s*\Q))\E`)
-	sortRx := regexp.MustCompile(`^\s*\Q((\E\s*sort(?:\s+by\s+(.*?))?\s*\Q))\E$`)
-
 	// prune/sort operator special behavior I:
 	// operator is defined in the original object and will now be overwritten by
 	// the new value. Therefore, remember that the operator was here at that path
@@ -140,20 +149,20 @@ func (m *Merger) mergeObj(orig interface{}, n interface{}, node string) interfac
 	origString, origOk := orig.(string)
 	newString, newOk := n.(string)
 	switch {
-	case origOk && pruneRx.MatchString(origString):
+	case origOk && isOperatorString(origString, "prune"):
 		DEBUG("%s: a (( prune )) operator is about to be replaced, check if its path needs to be saved", node)
 		addToPruneListIfNecessary(strings.Replace(node, "$.", "", -1))
 
-	case newOk && pruneRx.MatchString(newString) && orig != nil:
+	case newOk && isOperatorString(newString, "prune") && orig != nil:
 		DEBUG("%s: a (( prune )) operator is about to replace existing content, check if its path needs to be saved", node)
 		addToPruneListIfNecessary(strings.Replace(node, "$.", "", -1))
 		return orig
 
-	case origOk && sortRx.MatchString(origString):
+	case origOk && isOperatorString(origString, "sort"):
 		DEBUG("%s: a (( sort )) operator is about to be replaced, check if its path needs to be saved", node)
 		addToSortListIfNecessary(origString, strings.Replace(node, "$.", "", -1))
 
-	case newOk && sortRx.MatchString(newString) && orig != nil:
+	case newOk && isOperatorString(newString, "sort") && orig != nil:
 		DEBUG("%s: a (( sort )) operator is about to replace existing content, check if its path needs to be saved", node)
 		addToSortListIfNecessary(newString, strings.Replace(node, "$.", "", -1))
 		return orig
@@ -457,12 +466,7 @@ func getArrayModifications(obj []interface{}, simpleList bool) []ModificationDef
 		return result
 	}
 
-	mergeRegEx := regexp.MustCompile("^\\Q((\\E\\s*merge\\s*\\Q))\\E$")
 	mergeOnKeyRegEx := regexp.MustCompile("^\\Q((\\E\\s*merge\\s+(on)\\s+(.+)\\s*\\Q))\\E$")
-	replaceRegEx := regexp.MustCompile("^\\Q((\\E\\s*replace\\s*\\Q))\\E$")
-	inlineRegEx := regexp.MustCompile("^\\Q((\\E\\s*inline\\s*\\Q))\\E$")
-	appendRegEx := regexp.MustCompile("^\\Q((\\E\\s*append\\s*\\Q))\\E$")
-	prependRegEx := regexp.MustCompile("^\\Q((\\E\\s*prepend\\s*\\Q))\\E$")
 	insertByIdxRegEx := regexp.MustCompile("^\\Q((\\E\\s*insert\\s+(after|before)\\s+(\\d+)\\s*\\Q))\\E$")
 	insertByNameRegEx := regexp.MustCompile("^\\Q((\\E\\s*insert\\s+(after|before)\\s+([^ ]+)?\\s*\"(.+)\"\\s*\\Q))\\E$")
 	deleteByIdxRegEx := regexp.MustCompile("^\\Q((\\E\\s*delete\\s+(-?\\d+)\\s*\\Q))\\E$")
@@ -475,7 +479,7 @@ func getArrayModifications(obj []interface{}, simpleList bool) []ModificationDef
 		case !isString:
 			//Do absolutely nothing
 
-		case mergeRegEx.MatchString(e): // check for (( merge ))
+		case isOperatorString(e, "merge"): // check for (( merge ))
 			result = append(result, ModificationDefinition{listOp: listOpMergeOnKey})
 			continue
 
@@ -490,19 +494,19 @@ func getArrayModifications(obj []interface{}, simpleList bool) []ModificationDef
 				continue
 			}
 
-		case inlineRegEx.MatchString(e): // check for (( inline ))
+		case isOperatorString(e, "inline"): // check for (( inline ))
 			result = append(result, ModificationDefinition{listOp: listOpMergeInline})
 			continue
 
-		case replaceRegEx.MatchString(e): // check for (( replace ))
+		case isOperatorString(e, "replace"): // check for (( replace ))
 			result = append(result, ModificationDefinition{listOp: listOpReplace})
 			continue
 
-		case appendRegEx.MatchString(e): // check for (( append ))
+		case isOperatorString(e, "append"): // check for (( append ))
 			result = append(result, ModificationDefinition{listOp: listOpInsert, index: -1})
 			continue
 
-		case prependRegEx.MatchString(e): // check for (( prepend ))
+		case isOperatorString(e, "prepend"): // check for (( prepend ))
 			result = append(result, ModificationDefinition{listOp: listOpInsert, index: 0})
 			continue
 
