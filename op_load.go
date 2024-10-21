@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/adberger/spruce/log"
+	log "github.com/adberger/spruce/log"
 	"github.com/geofffranks/simpleyaml"
 	"github.com/starkandwayne/goutils/ansi"
 	"github.com/starkandwayne/goutils/tree"
@@ -63,7 +63,7 @@ func (LoadOperator) Run(ev *Evaluator, args []*Expr) (*Response, error) {
 		s, err := v.Reference.Resolve(ev.Tree)
 		if err != nil {
 			log.DEBUG("     [%d]: resolution failed\n    error: %s", i, err)
-			return nil, fmt.Errorf("Unable to resolve `%s`: %s", v.Reference, err)
+			return nil, fmt.Errorf("unable to resolve `%s`: %s", v.Reference, err)
 		}
 
 		switch s.(type) {

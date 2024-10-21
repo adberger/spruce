@@ -10,7 +10,7 @@ import (
 
 	"github.com/starkandwayne/goutils/ansi"
 
-	. "github.com/adberger/spruce/log"
+	log "github.com/adberger/spruce/log"
 )
 
 type listOp int
@@ -29,13 +29,14 @@ type Merger struct {
 	AppendByDefault bool
 
 	Errors MultiError
-	depth  int
 }
 
 // ModificationDefinition encapsulates the details of an array modification:
 // (1) the type of modification, e.g. insert, delete, replace
 // (2) an optional guide to the specific part of the array to be modified,
-//    for example the index at which an insertion should be done
+//
+//	for example the index at which an insertion should be done
+//
 // (3) an optional list of entries to be added or merged into the array
 type ModificationDefinition struct {
 	listOp listOp
@@ -77,17 +78,17 @@ func getDefaultIdentifierKey() string {
 }
 
 func deepCopy(orig interface{}) interface{} {
-	switch orig.(type) {
+	switch orig := orig.(type) {
 	case map[interface{}]interface{}:
 		x := map[interface{}]interface{}{}
-		for k, v := range orig.(map[interface{}]interface{}) {
+		for k, v := range orig {
 			x[k] = deepCopy(v)
 		}
 		return x
 
 	case []interface{}:
-		x := make([]interface{}, len(orig.([]interface{})))
-		for i, v := range orig.([]interface{}) {
+		x := make([]interface{}, len(orig))
+		for i, v := range orig {
 			x[i] = deepCopy(v)
 		}
 		return x
@@ -112,10 +113,10 @@ func (m *Merger) mergeMap(orig map[interface{}]interface{}, n map[interface{}]in
 		}
 
 		if _, exists := orig[k]; exists {
-			DEBUG("%s: found upstream, merging it", path)
+			log.DEBUG("%s: found upstream, merging it", path)
 			orig[k] = m.mergeObj(orig[k], val, path)
 		} else {
-			DEBUG("%s: not found upstream, adding it", path)
+			log.DEBUG("%s: not found upstream, adding it", path)
 			orig[k] = m.mergeObj(nil, deepCopy(val), path)
 		}
 	}
@@ -141,20 +142,20 @@ func (m *Merger) mergeObj(orig interface{}, n interface{}, node string) interfac
 	newString, newOk := n.(string)
 	switch {
 	case origOk && pruneRx.MatchString(origString):
-		DEBUG("%s: a (( prune )) operator is about to be replaced, check if its path needs to be saved", node)
+		log.DEBUG("%s: a (( prune )) operator is about to be replaced, check if its path needs to be saved", node)
 		addToPruneListIfNecessary(strings.Replace(node, "$.", "", -1))
 
 	case newOk && pruneRx.MatchString(newString) && orig != nil:
-		DEBUG("%s: a (( prune )) operator is about to replace existing content, check if its path needs to be saved", node)
+		log.DEBUG("%s: a (( prune )) operator is about to replace existing content, check if its path needs to be saved", node)
 		addToPruneListIfNecessary(strings.Replace(node, "$.", "", -1))
 		return orig
 
 	case origOk && sortRx.MatchString(origString):
-		DEBUG("%s: a (( sort )) operator is about to be replaced, check if its path needs to be saved", node)
+		log.DEBUG("%s: a (( sort )) operator is about to be replaced, check if its path needs to be saved", node)
 		addToSortListIfNecessary(origString, strings.Replace(node, "$.", "", -1))
 
 	case newOk && sortRx.MatchString(newString) && orig != nil:
-		DEBUG("%s: a (( sort )) operator is about to replace existing content, check if its path needs to be saved", node)
+		log.DEBUG("%s: a (( sort )) operator is about to replace existing content, check if its path needs to be saved", node)
 		addToSortListIfNecessary(newString, strings.Replace(node, "$.", "", -1))
 		return orig
 	}
@@ -163,7 +164,7 @@ func (m *Merger) mergeObj(orig interface{}, n interface{}, node string) interfac
 	case map[interface{}]interface{}:
 		switch orig.(type) {
 		case map[interface{}]interface{}:
-			DEBUG("%s: performing map merge", node)
+			log.DEBUG("%s: performing map merge", node)
 			m.mergeMap(orig.(map[interface{}]interface{}), n.(map[interface{}]interface{}), node)
 			return orig
 
@@ -173,14 +174,14 @@ func (m *Merger) mergeObj(orig interface{}, n interface{}, node string) interfac
 			return orig
 
 		default:
-			DEBUG("%s: replacing with new data (original was not a map)", node)
+			log.DEBUG("%s: replacing with new data (original was not a map)", node)
 			return t
 		}
 
 	case []interface{}:
 		switch orig.(type) {
 		case []interface{}:
-			DEBUG("%s: performing array merge", node)
+			log.DEBUG("%s: performing array merge", node)
 			return m.mergeArray(orig.([]interface{}), n.([]interface{}), node)
 
 		case nil:
@@ -188,24 +189,19 @@ func (m *Merger) mergeObj(orig interface{}, n interface{}, node string) interfac
 			return m.mergeArray(orig, n.([]interface{}), node)
 
 		default:
-			if orig == nil {
-				DEBUG("%s: performing array merge (original was nil)", node)
-				return m.mergeArray([]interface{}{}, n.([]interface{}), node)
-			}
-
-			DEBUG("%s: replacing with new data (original was not an array)", node)
+			log.DEBUG("%s: replacing with new data (original was not an array)", node)
 			return t
 		}
 
 	default:
-		DEBUG("%s: replacing with new data (new data is neither map nor array)", node)
+		log.DEBUG("%s: replacing with new data (new data is neither map nor array)", node)
 		return t
 	}
 }
 
 func (m *Merger) mergeArray(orig []interface{}, n []interface{}, node string) []interface{} {
 	modificationDefinitions := getArrayModifications(n, isSimpleList(orig))
-	DEBUG("%s: performing %d modification operations against list", node, len(modificationDefinitions))
+	log.DEBUG("%s: performing %d modification operations against list", node, len(modificationDefinitions))
 
 	// Create a copy of orig for the (multiple) modifications that are about to happen
 	result := make([]interface{}, len(orig))
@@ -213,7 +209,7 @@ func (m *Merger) mergeArray(orig []interface{}, n []interface{}, node string) []
 
 	// Process the modifications definitions that were found in the new list
 	for i, modificationDefinition := range modificationDefinitions {
-		DEBUG("  #%d %#v", i, modificationDefinition)
+		log.DEBUG("  #%d %#v", i, modificationDefinition)
 
 		// insert/delete operations will use a list index later in this loop block
 		var idx int
@@ -296,7 +292,7 @@ func (m *Merger) mergeArray(orig []interface{}, n []interface{}, node string) []
 			}
 
 			// Sanity check new list, depending on the operation type (delete or insert)
-			if delete == false {
+			if !delete {
 
 				// Sanity check new list, list must contain key/id based entries
 				if err := canKeyMergeArray("new", modificationDefinition.list, node, key); err != nil {
@@ -341,10 +337,10 @@ func (m *Merger) mergeArray(orig []interface{}, n []interface{}, node string) []
 		}
 
 		if modificationDefinition.listOp != listOpDelete {
-			DEBUG("%s: inserting %d new elements to existing array at index %d", node, len(modificationDefinition.list), idx)
+			log.DEBUG("%s: inserting %d new elements to existing array at index %d", node, len(modificationDefinition.list), idx)
 			result = insertIntoList(result, idx, modificationDefinition.list)
 		} else {
-			DEBUG("%s: deleting element at array index %d", node, idx)
+			log.DEBUG("%s: deleting element at array index %d", node, idx)
 			result = deleteIndexFromList(result, idx)
 		}
 	}
@@ -355,7 +351,7 @@ func (m *Merger) mergeArray(orig []interface{}, n []interface{}, node string) []
 // The magic which chooses to merge, append, or inline based on the contents of
 // the array
 func (m *Merger) mergeArrayDefault(orig []interface{}, n []interface{}, node string) []interface{} {
-	DEBUG("%s: performing index-based array merge", node)
+	log.DEBUG("%s: performing index-based array merge", node)
 	var err error
 	key := getDefaultIdentifierKey()
 
@@ -386,7 +382,7 @@ func (m *Merger) mergeArrayInline(orig []interface{}, n []interface{}, node stri
 	if len(n) > len(orig) {
 		length = len(n)
 	}
-	merged := make([]interface{}, length, length)
+	merged := make([]interface{}, length)
 
 	var last int
 	for i := range orig {
@@ -406,7 +402,7 @@ func (m *Merger) mergeArrayInline(orig []interface{}, n []interface{}, node stri
 	// grab the remainder of n (if any) and append the to the result
 	for i := last; i < len(n); i++ {
 		path := fmt.Sprintf("%s.%d", node, i)
-		DEBUG("%s: appending new data to existing array", path)
+		log.DEBUG("%s: appending new data to existing array", path)
 		merged[i] = m.mergeObj(nil, n[i], path)
 	}
 
@@ -414,7 +410,7 @@ func (m *Merger) mergeArrayInline(orig []interface{}, n []interface{}, node stri
 }
 
 func (m *Merger) mergeArrayByKey(orig []interface{}, n []interface{}, node string, key string) []interface{} {
-	merged := make([]interface{}, len(orig), len(orig))
+	merged := make([]interface{}, len(orig))
 	newMap := make(map[interface{}]interface{})
 	for _, o := range n {
 		obj := o.(map[interface{}]interface{})
@@ -436,7 +432,7 @@ func (m *Merger) mergeArrayByKey(orig []interface{}, n []interface{}, node strin
 		obj := obj.(map[interface{}]interface{})
 		if _, ok := newMap[obj[key]]; ok {
 			path := fmt.Sprintf("%s.%d", node, i)
-			DEBUG("%s: appending new data to merged array", path)
+			log.DEBUG("%s: appending new data to merged array", path)
 			merged = append(merged, m.mergeObj(nil, obj, path))
 			i++
 		}
@@ -450,24 +446,24 @@ func (m *Merger) mergeArrayByKey(orig []interface{}, n []interface{}, node strin
 // object in the returned will always represent the default merge behavior.
 func getArrayModifications(obj []interface{}, simpleList bool) []ModificationDefinition {
 	// Starts with an entry representing the default merge behavior
-	result := []ModificationDefinition{ModificationDefinition{listOp: listOpMergeDefault}}
+	result := []ModificationDefinition{{listOp: listOpMergeDefault}}
 
 	// easy shortcircuit
 	if len(obj) == 0 {
 		return result
 	}
 
-	mergeRegEx := regexp.MustCompile("^\\Q((\\E\\s*merge\\s*\\Q))\\E$")
-	mergeOnKeyRegEx := regexp.MustCompile("^\\Q((\\E\\s*merge\\s+(on)\\s+(.+)\\s*\\Q))\\E$")
-	replaceRegEx := regexp.MustCompile("^\\Q((\\E\\s*replace\\s*\\Q))\\E$")
-	inlineRegEx := regexp.MustCompile("^\\Q((\\E\\s*inline\\s*\\Q))\\E$")
-	appendRegEx := regexp.MustCompile("^\\Q((\\E\\s*append\\s*\\Q))\\E$")
-	prependRegEx := regexp.MustCompile("^\\Q((\\E\\s*prepend\\s*\\Q))\\E$")
-	insertByIdxRegEx := regexp.MustCompile("^\\Q((\\E\\s*insert\\s+(after|before)\\s+(\\d+)\\s*\\Q))\\E$")
-	insertByNameRegEx := regexp.MustCompile("^\\Q((\\E\\s*insert\\s+(after|before)\\s+([^ ]+)?\\s*\"(.+)\"\\s*\\Q))\\E$")
-	deleteByIdxRegEx := regexp.MustCompile("^\\Q((\\E\\s*delete\\s+(-?\\d+)\\s*\\Q))\\E$")
-	deleteByNameRegEx := regexp.MustCompile("^\\Q((\\E\\s*delete\\s+([^ ]+)?\\s*\"(.+)\"\\s*\\Q))\\E$")
-	deleteByNameUnquotedRegEx := regexp.MustCompile("^\\Q((\\E\\s*delete\\s+([^ ]+)?\\s*(.+)\\s*\\Q))\\E$")
+	mergeRegEx := regexp.MustCompile(`^\Q((\E\s*merge\s*\Q))\E$`)
+	mergeOnKeyRegEx := regexp.MustCompile(`^\Q((\E\s*merge\s+(on)\s+(.+)\s*\Q))\E$`)
+	replaceRegEx := regexp.MustCompile(`^\Q((\E\s*replace\s*\Q))\E$`)
+	inlineRegEx := regexp.MustCompile(`^\Q((\E\s*inline\s*\Q))\E$`)
+	appendRegEx := regexp.MustCompile(`^\Q((\E\s*append\s*\Q))\E$`)
+	prependRegEx := regexp.MustCompile(`^\Q((\E\s*prepend\s*\Q))\E$`)
+	insertByIdxRegEx := regexp.MustCompile(`^\Q((\E\s*insert\s+(after|before)\s+(\d+)\s*\Q))\E$`)
+	insertByNameRegEx := regexp.MustCompile(`^\Q((\E\s*insert\s+(after|before)\s+([^ ]+)?\s*\"(.+)\"\s*\Q))\E$`)
+	deleteByIdxRegEx := regexp.MustCompile(`^\Q((\E\s*delete\s+(-?\d+)\s*\Q))\E$`)
+	deleteByNameRegEx := regexp.MustCompile(`^\Q((\E\s*delete\s+([^ ]+)?\s*\"(.+)\"\s*\Q))\E$`)
+	deleteByNameUnquotedRegEx := regexp.MustCompile(`^\Q((\E\s*delete\s+([^ ]+)?\s*(.+)\s*\Q))\E$`)
 
 	for _, entry := range obj {
 		e, isString := entry.(string)
@@ -611,7 +607,7 @@ func getArrayModifications(obj []interface{}, simpleList bool) []ModificationDef
 }
 
 func isSimpleList(list []interface{}) bool {
-	DEBUG("Going to validate if this is a simple list: %v", list)
+	log.DEBUG("Going to validate if this is a simple list: %v", list)
 
 	if len(list) == 0 {
 		return false
@@ -625,7 +621,7 @@ func isSimpleList(list []interface{}) bool {
 		}
 	}
 	if hash_count == 0 {
-		DEBUG("Working on a simple list")
+		log.DEBUG("Working on a simple list")
 	}
 	return hash_count == 0
 }
@@ -634,7 +630,7 @@ func shouldKeyMergeArray(obj []interface{}) (bool, string) {
 	key := getDefaultIdentifierKey()
 
 	if len(obj) >= 1 && obj[0] != nil && reflect.TypeOf(obj[0]).Kind() == reflect.String {
-		re := regexp.MustCompile("^\\Q((\\E\\s*merge(?:\\s+on\\s+(.*?))?\\s*\\Q))\\E$")
+		re := regexp.MustCompile(`^\Q((\E\s*merge(?:\s+on\s+(.*?))?\s*\Q))\E$`)
 
 		if re.MatchString(obj[0].(string)) {
 			keys := re.FindStringSubmatch(obj[0].(string))

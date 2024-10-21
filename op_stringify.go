@@ -1,7 +1,7 @@
 package spruce
 
 import (
-	"github.com/adberger/spruce/log"
+	log "github.com/adberger/spruce/log"
 	"github.com/geofffranks/yaml"
 	fmt "github.com/starkandwayne/goutils/ansi"
 	"github.com/starkandwayne/goutils/tree"
