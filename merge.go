@@ -98,6 +98,85 @@ func deepCopy(orig interface{}) interface{} {
 	}
 }
 
+func parseOperation(input string, operation string, arguments string, filterType string) bool {
+	// Trim leading and trailing spaces
+	trimmed := strings.TrimSpace(input)
+
+	// Check if the string starts with "(("
+	if !strings.HasPrefix(trimmed, "((") {
+		return false
+	}
+
+	// Check if the string ends with "))"
+	if !strings.HasSuffix(trimmed, "))") {
+		return false
+	}
+
+	// Remove "((" from the start and "))" from the end
+	inner := trimmed[2 : len(trimmed)-2]
+
+	// Trim spaces inside
+	inner = strings.TrimSpace(inner)
+
+	if arguments == "" && filterType == "" {
+		// Only operation supplied, return true if it matches
+		return inner == operation
+	} else if arguments == "" && filterType != "" {
+		// Only used for delete operations
+		if strings.HasPrefix(inner, operation) {
+			switch filterType {
+			case "signedInt":
+				parts := strings.Fields(inner)
+				if len(parts) > 0 {
+					_, err := strconv.Atoi(parts[len(parts)-1])
+					if err == nil {
+						return true
+					}
+				}
+			case "unquotedString":
+				if !strings.Contains(inner, `"`) {
+					return true
+				}
+			default:
+				if !strings.Contains(inner, `"`) {
+					return false
+				} else {
+					return true
+				}
+			}
+		}
+	} else if arguments != "" {
+		if filterType == "" {
+			if arguments == "*" {
+				// Only used for mergeMap, return true if it matches
+				if strings.HasPrefix(inner, operation) {
+					return true
+				}
+			} else {
+				// Only used for sort by
+				return strings.Contains(inner, arguments)
+			}
+		} else {
+			// Only used for inserts & merge on
+			if strings.HasPrefix(inner, operation) && strings.Contains(inner, arguments) {
+				switch filterType {
+				case "unsignedInt":
+					parts := strings.Fields(inner)
+					if len(parts) > 0 {
+						_, err := strconv.ParseUint(parts[len(parts)-1], 10, 64)
+						if err == nil {
+							return true
+						}
+					}
+				default:
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // Merge ...
 func (m *Merger) Merge(a map[interface{}]interface{}, b map[interface{}]interface{}) error {
 	m.mergeMap(a, b, "$")
@@ -105,10 +184,10 @@ func (m *Merger) Merge(a map[interface{}]interface{}, b map[interface{}]interfac
 }
 
 func (m *Merger) mergeMap(orig map[interface{}]interface{}, n map[interface{}]interface{}, node string) {
-	mergeRx := regexp.MustCompile(`^\s*\Q((\E\s*merge\s*.*\Q))\E`)
+	// 	mergeRx := regexp.MustCompile(`^\s*\Q((\E\s*merge\s*.*\Q))\E`)
 	for k, val := range n {
 		path := fmt.Sprintf("%s.%v", node, k)
-		if s, ok := val.(string); ok && mergeRx.MatchString(s) {
+		if s, ok := val.(string); ok && parseOperation(s, "merge", "*", "") {
 			m.Errors.Append(ansi.Errorf("@m{%s}: @R{inappropriate use of} @c{(( merge ))} @R{operator outside of a list} (this is @G{spruce}, after all)", path))
 		}
 
@@ -125,8 +204,8 @@ func (m *Merger) mergeMap(orig map[interface{}]interface{}, n map[interface{}]in
 func (m *Merger) mergeObj(orig interface{}, n interface{}, node string) interface{} {
 	// regular expression to search for prune and sort operator to make their
 	// special behavior possible
-	pruneRx := regexp.MustCompile(`^\s*\Q((\E\s*prune\s*\Q))\E`)
-	sortRx := regexp.MustCompile(`^\s*\Q((\E\s*sort(?:\s+by\s+(.*?))?\s*\Q))\E$`)
+	// pruneRx := regexp.MustCompile(`^\s*\Q((\E\s*prune\s*\Q))\E`)
+	// sortRx := regexp.MustCompile(`^\s*\Q((\E\s*sort(?:\s+by\s+(.*?))?\s*\Q))\E$`)
 
 	// prune/sort operator special behavior I:
 	// operator is defined in the original object and will now be overwritten by
@@ -141,20 +220,20 @@ func (m *Merger) mergeObj(orig interface{}, n interface{}, node string) interfac
 	origString, origOk := orig.(string)
 	newString, newOk := n.(string)
 	switch {
-	case origOk && pruneRx.MatchString(origString):
+	case origOk && parseOperation(origString, "prune", "", ""):
 		log.DEBUG("%s: a (( prune )) operator is about to be replaced, check if its path needs to be saved", node)
 		addToPruneListIfNecessary(strings.Replace(node, "$.", "", -1))
 
-	case newOk && pruneRx.MatchString(newString) && orig != nil:
+	case newOk && parseOperation(newString, "prune", "", "") && orig != nil:
 		log.DEBUG("%s: a (( prune )) operator is about to replace existing content, check if its path needs to be saved", node)
 		addToPruneListIfNecessary(strings.Replace(node, "$.", "", -1))
 		return orig
 
-	case origOk && sortRx.MatchString(origString):
+	case origOk && parseOperation(origString, "sort", "by", ""):
 		log.DEBUG("%s: a (( sort )) operator is about to be replaced, check if its path needs to be saved", node)
 		addToSortListIfNecessary(origString, strings.Replace(node, "$.", "", -1))
 
-	case newOk && sortRx.MatchString(newString) && orig != nil:
+	case newOk && parseOperation(newString, "sort", "by", "") && orig != nil:
 		log.DEBUG("%s: a (( sort )) operator is about to replace existing content, check if its path needs to be saved", node)
 		addToSortListIfNecessary(newString, strings.Replace(node, "$.", "", -1))
 		return orig
@@ -453,12 +532,12 @@ func getArrayModifications(obj []interface{}, simpleList bool) []ModificationDef
 		return result
 	}
 
-	mergeRegEx := regexp.MustCompile(`^\Q((\E\s*merge\s*\Q))\E$`)
+	// mergeRegEx := regexp.MustCompile(`^\Q((\E\s*merge\s*\Q))\E$`)
 	mergeOnKeyRegEx := regexp.MustCompile(`^\Q((\E\s*merge\s+(on)\s+(.+)\s*\Q))\E$`)
-	replaceRegEx := regexp.MustCompile(`^\Q((\E\s*replace\s*\Q))\E$`)
-	inlineRegEx := regexp.MustCompile(`^\Q((\E\s*inline\s*\Q))\E$`)
-	appendRegEx := regexp.MustCompile(`^\Q((\E\s*append\s*\Q))\E$`)
-	prependRegEx := regexp.MustCompile(`^\Q((\E\s*prepend\s*\Q))\E$`)
+	// replaceRegEx := regexp.MustCompile(`^\Q((\E\s*replace\s*\Q))\E$`)
+	// inlineRegEx := regexp.MustCompile(`^\Q((\E\s*inline\s*\Q))\E$`)
+	// appendRegEx := regexp.MustCompile(`^\Q((\E\s*append\s*\Q))\E$`)
+	// prependRegEx := regexp.MustCompile(`^\Q((\E\s*prepend\s*\Q))\E$`)
 	insertByIdxRegEx := regexp.MustCompile(`^\Q((\E\s*insert\s+(after|before)\s+(\d+)\s*\Q))\E$`)
 	insertByNameRegEx := regexp.MustCompile(`^\Q((\E\s*insert\s+(after|before)\s+([^ ]+)?\s*\"(.+)\"\s*\Q))\E$`)
 	deleteByIdxRegEx := regexp.MustCompile(`^\Q((\E\s*delete\s+(-?\d+)\s*\Q))\E$`)
@@ -471,11 +550,11 @@ func getArrayModifications(obj []interface{}, simpleList bool) []ModificationDef
 		case !isString:
 			//Do absolutely nothing
 
-		case mergeRegEx.MatchString(e): // check for (( merge ))
+		case parseOperation(e, "merge", "", ""): // check for (( merge ))
 			result = append(result, ModificationDefinition{listOp: listOpMergeOnKey})
 			continue
 
-		case mergeOnKeyRegEx.MatchString(e): // check for (( merge on "key" ))
+		case parseOperation(e, "merge", "on", "string"): // check for (( merge on "key" ))
 			/* #0 is the whole string,
 			 * #1 is string 'on'
 			 * #2 is the named-entry identifying key
@@ -486,23 +565,23 @@ func getArrayModifications(obj []interface{}, simpleList bool) []ModificationDef
 				continue
 			}
 
-		case inlineRegEx.MatchString(e): // check for (( inline ))
+		case parseOperation(e, "inline", "", ""): // check for (( inline ))
 			result = append(result, ModificationDefinition{listOp: listOpMergeInline})
 			continue
 
-		case replaceRegEx.MatchString(e): // check for (( replace ))
+		case parseOperation(e, "replace", "", ""): // check for (( replace ))
 			result = append(result, ModificationDefinition{listOp: listOpReplace})
 			continue
 
-		case appendRegEx.MatchString(e): // check for (( append ))
+		case parseOperation(e, "append", "", ""): // check for (( append ))
 			result = append(result, ModificationDefinition{listOp: listOpInsert, index: -1})
 			continue
 
-		case prependRegEx.MatchString(e): // check for (( prepend ))
+		case parseOperation(e, "prepend", "", ""): // check for (( prepend ))
 			result = append(result, ModificationDefinition{listOp: listOpInsert, index: 0})
 			continue
 
-		case insertByIdxRegEx.MatchString(e): // check for (( insert ... <idx> ))
+		case parseOperation(e, "insert", "after", "unsignedInt") || parseOperation(e, "insert", "before", "unsignedInt"): // check for (( insert ... <idx> ))
 			/* #0 is the whole string,
 			 * #1 is after or before
 			 * #2 is the insertion index
@@ -516,7 +595,7 @@ func getArrayModifications(obj []interface{}, simpleList bool) []ModificationDef
 				}
 			}
 
-		case insertByNameRegEx.MatchString(e): // check for (( insert ... "<name>" ))
+		case parseOperation(e, "insert", "after", "string") || parseOperation(e, "insert", "before", "string"): // check for (( insert ... "<name>" ))
 			/* #0 is the whole string,
 			 * #1 is after or before
 			 * #2 contains the optional '<key>' string
@@ -535,7 +614,7 @@ func getArrayModifications(obj []interface{}, simpleList bool) []ModificationDef
 				continue
 			}
 
-		case deleteByIdxRegEx.MatchString(e): // check for (( delete <idx> ))
+		case parseOperation(e, "delete", "", "signedInt"): // check for (( delete <idx> ))
 			/* #0 is the whole string,
 			 * #1 is idx
 			 */
@@ -547,7 +626,7 @@ func getArrayModifications(obj []interface{}, simpleList bool) []ModificationDef
 				}
 			}
 
-		case deleteByNameRegEx.MatchString(e): // check for (( delete "<name>" ))
+		case parseOperation(e, "delete", "", "string"): // check for (( delete "<name>" ))
 			/* #0 is the whole string,
 			 * #1 contains the optional '<key>' string
 			 * #2 is finally the target "<name>" string
@@ -569,7 +648,7 @@ func getArrayModifications(obj []interface{}, simpleList bool) []ModificationDef
 				continue
 			}
 
-		case deleteByNameUnquotedRegEx.MatchString(e): // check for (( delete "<name>" ))
+		case parseOperation(e, "delete", "", "unquotedString"): // check for (( delete <name> ))
 			/* #0 is the whole string,
 			 * #1 contains the optional '<key>' string
 			 * #2 is finally the target "<name>" string
