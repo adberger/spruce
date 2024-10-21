@@ -350,10 +350,10 @@ func ParseOpcall(phase OperatorPhase, src string) (*Opcall, error) {
 	}
 
 	argify := func(src string) (args []*Expr, err error) {
-		qstring := regexp.MustCompile(`(?s)^"(.*)"$`)
+		qstring := regexp.MustCompile(`^"([^"]*)"$`)
 		integer := regexp.MustCompile(`^[+-]?\d+(\.\d+)?$`)
-		float := regexp.MustCompile(`^[+-]?\d*\.\d+$`)
-		envvar := regexp.MustCompile(`^\$[a-zA-Z_][a-zA-Z0-9_.]*$`)
+		float := regexp.MustCompile(`^[+-]?(?:\d+\.\d*|\.\d+)$`)
+		envvar := regexp.MustCompile(`^\$[a-zA-Z_][\w.]*$`)
 
 		var final []*Expr
 		var left, op *Expr
@@ -480,8 +480,8 @@ func ParseOpcall(phase OperatorPhase, src string) (*Opcall, error) {
 	op := &Opcall{src: src}
 
 	for _, pattern := range []string{
-		`^\Q((\E\s*([a-zA-Z][a-zA-Z0-9_-]*)(?:\s*\((.*)\))?\s*\Q))\E$`, // (( op(x,y,z) ))
-		`^\Q((\E\s*([a-zA-Z][a-zA-Z0-9_-]*)(?:\s+(.*))?\s*\Q))\E$`,     // (( op x y z ))
+		`^\(\(\s*([a-zA-Z][a-zA-Z0-9_-]*)(?:\s*\(([^)]*)\))?\s*\)\)\s*$`, // (( op(x,y,z) ))
+		`^\(\(\s*([a-zA-Z][a-zA-Z0-9_-]*)(?:\s+(.+))?\s*\)\)\s*$`,        // (( op x y z ))
 	} {
 		re := regexp.MustCompile(pattern)
 		if !re.MatchString(src) {
