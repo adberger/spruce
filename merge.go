@@ -533,16 +533,10 @@ func getArrayModifications(obj []interface{}, simpleList bool) []ModificationDef
 	}
 
 	// mergeRegEx := regexp.MustCompile(`^\Q((\E\s*merge\s*\Q))\E$`)
-	mergeOnKeyRegEx := regexp.MustCompile(`^\Q((\E\s*merge\s+(on)\s+(.+)\s*\Q))\E$`)
 	// replaceRegEx := regexp.MustCompile(`^\Q((\E\s*replace\s*\Q))\E$`)
 	// inlineRegEx := regexp.MustCompile(`^\Q((\E\s*inline\s*\Q))\E$`)
 	// appendRegEx := regexp.MustCompile(`^\Q((\E\s*append\s*\Q))\E$`)
 	// prependRegEx := regexp.MustCompile(`^\Q((\E\s*prepend\s*\Q))\E$`)
-	insertByIdxRegEx := regexp.MustCompile(`^\Q((\E\s*insert\s+(after|before)\s+(\d+)\s*\Q))\E$`)
-	insertByNameRegEx := regexp.MustCompile(`^\Q((\E\s*insert\s+(after|before)\s+([^ ]+)?\s*\"(.+)\"\s*\Q))\E$`)
-	deleteByIdxRegEx := regexp.MustCompile(`^\Q((\E\s*delete\s+(-?\d+)\s*\Q))\E$`)
-	deleteByNameRegEx := regexp.MustCompile(`^\Q((\E\s*delete\s+([^ ]+)?\s*\"(.+)\"\s*\Q))\E$`)
-	deleteByNameUnquotedRegEx := regexp.MustCompile(`^\Q((\E\s*delete\s+([^ ]+)?\s*(.+)\s*\Q))\E$`)
 
 	for _, entry := range obj {
 		e, isString := entry.(string)
@@ -559,6 +553,7 @@ func getArrayModifications(obj []interface{}, simpleList bool) []ModificationDef
 			 * #1 is string 'on'
 			 * #2 is the named-entry identifying key
 			 */
+			mergeOnKeyRegEx := regexp.MustCompile(`^\Q((\E\s*merge\s+(on)\s+(.+)\s*\Q))\E$`)
 			if captures := mergeOnKeyRegEx.FindStringSubmatch(e); len(captures) == 3 {
 				key := strings.TrimSpace(captures[2])
 				result = append(result, ModificationDefinition{listOp: listOpMergeOnKey, key: key})
@@ -586,6 +581,7 @@ func getArrayModifications(obj []interface{}, simpleList bool) []ModificationDef
 			 * #1 is after or before
 			 * #2 is the insertion index
 			 */
+			insertByIdxRegEx := regexp.MustCompile(`^\Q((\E\s*insert\s+(after|before)\s+(\d+)\s*\Q))\E$`)
 			if captures := insertByIdxRegEx.FindStringSubmatch(e); len(captures) == 3 {
 				relative := strings.TrimSpace(captures[1])
 				position := strings.TrimSpace(captures[2])
@@ -601,6 +597,7 @@ func getArrayModifications(obj []interface{}, simpleList bool) []ModificationDef
 			 * #2 contains the optional '<key>' string
 			 * #3 is finally the target "<name>" string
 			 */
+			insertByNameRegEx := regexp.MustCompile(`^\Q((\E\s*insert\s+(after|before)\s+([^ ]+)?\s*\"(.+)\"\s*\Q))\E$`)
 			if captures := insertByNameRegEx.FindStringSubmatch(entry.(string)); len(captures) == 4 {
 				relative := strings.TrimSpace(captures[1])
 				key := strings.TrimSpace(captures[2])
@@ -618,6 +615,7 @@ func getArrayModifications(obj []interface{}, simpleList bool) []ModificationDef
 			/* #0 is the whole string,
 			 * #1 is idx
 			 */
+			deleteByIdxRegEx := regexp.MustCompile(`^\Q((\E\s*delete\s+(-?\d+)\s*\Q))\E$`)
 			if captures := deleteByIdxRegEx.FindStringSubmatch(e); len(captures) == 2 {
 				position := strings.TrimSpace(captures[1])
 				if idx, err := strconv.Atoi(position); err == nil {
@@ -631,6 +629,7 @@ func getArrayModifications(obj []interface{}, simpleList bool) []ModificationDef
 			 * #1 contains the optional '<key>' string
 			 * #2 is finally the target "<name>" string
 			 */
+			deleteByNameRegEx := regexp.MustCompile(`^\Q((\E\s*delete\s+([^ ]+)?\s*\"(.+)\"\s*\Q))\E$`)
 			if captures := deleteByNameRegEx.FindStringSubmatch(e); len(captures) == 3 {
 				key := strings.TrimSpace(captures[1])
 				name := strings.TrimSpace(captures[2])
@@ -653,6 +652,7 @@ func getArrayModifications(obj []interface{}, simpleList bool) []ModificationDef
 			 * #1 contains the optional '<key>' string
 			 * #2 is finally the target "<name>" string
 			 */
+			deleteByNameUnquotedRegEx := regexp.MustCompile(`^\Q((\E\s*delete\s+([^ ]+)?\s*(.+)\s*\Q))\E$`)
 			if captures := deleteByNameUnquotedRegEx.FindStringSubmatch(e); len(captures) == 3 {
 				key := strings.TrimSpace(captures[1])
 				name := strings.TrimSpace(captures[2])

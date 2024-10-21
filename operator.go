@@ -5,6 +5,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/geofffranks/yaml"
 	"github.com/starkandwayne/goutils/ansi"
@@ -278,6 +279,23 @@ func (e *Expr) Dependencies(ev *Evaluator, locs []*tree.Cursor) []*tree.Cursor {
 	return l
 }
 
+func matchPattern(s string) bool {
+	// Trim leading and trailing spaces
+	trimmed := strings.TrimSpace(s)
+
+	// Check if the string starts with "(("
+	if !strings.HasPrefix(trimmed, "((") {
+		return false
+	}
+
+	// Check if the string ends with "))"
+	if !strings.HasSuffix(trimmed, "))") {
+		return false
+	}
+
+	return true
+}
+
 // Opcall ...
 type Opcall struct {
 	src       string
@@ -350,10 +368,10 @@ func ParseOpcall(phase OperatorPhase, src string) (*Opcall, error) {
 	}
 
 	argify := func(src string) (args []*Expr, err error) {
-		qstring := regexp.MustCompile(`(?s)^"(.*)"$`)
+		qstring := regexp.MustCompile(`^"([^"]*)"$`)
 		integer := regexp.MustCompile(`^[+-]?\d+(\.\d+)?$`)
-		float := regexp.MustCompile(`^[+-]?\d*\.\d+$`)
-		envvar := regexp.MustCompile(`^\$[a-zA-Z_][a-zA-Z0-9_.]*$`)
+		float := regexp.MustCompile(`^[+-]?(?:\d+\.\d*|\.\d+)$`)
+		envvar := regexp.MustCompile(`^\$[a-zA-Z_][\w.]*$`)
 
 		var final []*Expr
 		var left, op *Expr
@@ -480,36 +498,38 @@ func ParseOpcall(phase OperatorPhase, src string) (*Opcall, error) {
 	op := &Opcall{src: src}
 
 	for _, pattern := range []string{
-		`^\Q((\E\s*([a-zA-Z][a-zA-Z0-9_-]*)(?:\s*\((.*)\))?\s*\Q))\E$`, // (( op(x,y,z) ))
-		`^\Q((\E\s*([a-zA-Z][a-zA-Z0-9_-]*)(?:\s+(.*))?\s*\Q))\E$`,     // (( op x y z ))
+		`^\(\(\s*([a-zA-Z][a-zA-Z0-9_-]*)(?:\s*\(([^)]*)\))?\s*\)\)\s*$`, // (( op(x,y,z) ))
+		`^\(\(\s*([a-zA-Z][a-zA-Z0-9_-]*)(?:\s+(.+))?\s*\)\)\s*$`,        // (( op x y z ))
 	} {
-		re := regexp.MustCompile(pattern)
-		if !re.MatchString(src) {
-			continue
-		}
+		if matchPattern(src) {
+			re := regexp.MustCompile(pattern)
+			if !re.MatchString(src) {
+				continue
+			}
 
-		m := re.FindStringSubmatch(src)
-		log.DEBUG("parsing `%s': looks like a (( %s ... )) operator\n arguments:", src, m[1])
+			m := re.FindStringSubmatch(src)
+			log.DEBUG("parsing `%s': looks like a (( %s ... )) operator\n arguments:", src, m[1])
 
-		op.op = OperatorFor(m[1])
-		if _, ok := op.op.(NullOperator); ok && len(m[2]) == 0 {
-			log.DEBUG("skipping `%s': not a real operator -- might be a BOSH variable?", src)
-			continue
-		}
-		if op.op.Phase() != phase {
-			log.DEBUG("  - skipping (( %s ... )) operation; it belongs to a different phase", m[1])
-			return nil, nil
-		}
+			op.op = OperatorFor(m[1])
+			if _, ok := op.op.(NullOperator); ok && len(m[2]) == 0 {
+				log.DEBUG("skipping `%s': not a real operator -- might be a BOSH variable?", src)
+				continue
+			}
+			if op.op.Phase() != phase {
+				log.DEBUG("  - skipping (( %s ... )) operation; it belongs to a different phase", m[1])
+				return nil, nil
+			}
 
-		args, err := argify(m[2])
-		if err != nil {
-			return nil, err
+			args, err := argify(m[2])
+			if err != nil {
+				return nil, err
+			}
+			if len(args) == 0 {
+				log.DEBUG("  (none)")
+			}
+			op.args = args
+			return op, nil
 		}
-		if len(args) == 0 {
-			log.DEBUG("  (none)")
-		}
-		op.args = args
-		return op, nil
 	}
 
 	return nil, nil
